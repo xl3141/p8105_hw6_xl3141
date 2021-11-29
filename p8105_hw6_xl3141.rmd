@@ -155,3 +155,72 @@ cv_df %>%
 
 The plot above compared the prediction error of three models. The model using baby's length at birth has the highest average rmse compared to other two models, indicating a worse fitting of this model. My model seems to have the smallest rmse among the three models which means it predicts the child's birth weight better than other two models provided.
 
+## Problem 2
+
+loading data
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+bootstrap
+
+```{r}
+set.seed(3)
+bootstrap = 
+  weather_df %>% 
+  bootstrap(n = 5000, id = "strap_number") 
+
+r_square_df = 
+  bootstrap %>% 
+    mutate(
+        models = map(.x = strap, ~lm(tmax ~ tmin, data = .x)),
+        glance = map(models, broom::glance)
+    ) %>% 
+    unnest(glance) %>% 
+    select(strap_number, r.squared)
+
+r_square_df %>% 
+  ggplot(aes(x = r.squared)) +
+  geom_density() +
+  labs(title = "distribution of r squared")
+```
+
+The distribution looks symmetric but is not perfectly bell-shaped. It centers around `r r_square_df %>% pull(r.squared) %>% mean()` with variance `r r_square_df %>% pull(r.squared) %>% var()`. The $95\%$ confidence interval is between [`r r_square_df %>% pull(r.squared) %>% quantile(c(0.025, 0.975))`].
+
+
+```{r}
+log_df = 
+  bootstrap %>% 
+  mutate(
+    models = map(.x = strap, ~lm(tmax ~ tmin, data = .x)),
+    result = map(models, broom::tidy)
+  ) %>% 
+  unnest(result)  
+  
+plot_log =  
+  log_df %>% 
+    group_by(strap_number) %>% 
+    mutate(log_beta = log(prod(estimate))) %>% 
+    filter(term == "tmin") %>% 
+    select(strap_number, log_beta)
+
+plot_log %>% 
+    ggplot(aes(x = log_beta)) +
+    geom_density() +
+    labs(title = "distribution of log(b0*b1)")
+
+
+```
+
+The distribution looks bell-shaped and symmetric. It centers around `r plot_log %>% pull(log_beta) %>% mean()` with variance about `r plot_log %>% pull(log_beta) %>% var()`. The $95\%$ confidence interval is between [`r plot_log %>% pull(log_beta) %>% quantile(c(0.025, 0.975))`].
